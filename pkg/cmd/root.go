@@ -29,27 +29,35 @@ var (
 func NewRootCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "kubectl-fluid",
-		Short: "A kubectl plugin for inspecting Fluid Datasets and Runtimes",
-		Long: `kubectl-fluid is a CLI tool for inspecting the status of Fluid Datasets
+		Short: "A kubectl plugin for inspecting and diagnosing Fluid Datasets and Runtimes",
+		Long: `kubectl-fluid is a CLI tool for inspecting and diagnosing the status of Fluid Datasets
 and their underlying Kubernetes resources in one unified view.
 
 This plugin provides read-only operations to help you understand the current
 state of your Fluid datasets, identify issues, and troubleshoot problems.
 
-Usage:
-  kubectl fluid inspect dataset <name> [-n namespace]
+Commands:
+  inspect  - Quick status overview of a Dataset and Runtime
+  diagnose - Comprehensive debugging with logs, events, and failure analysis
 
 Examples:
-  # Inspect a dataset in the default namespace
+  # Quick inspect of a dataset
   kubectl fluid inspect dataset demo-data
 
-  # Inspect a dataset in a specific namespace
-  kubectl fluid inspect dataset demo-data -n fluid-system`,
+  # Comprehensive diagnosis with logs and events
+  kubectl fluid diagnose dataset demo-data
+
+  # Generate diagnostic archive for sharing
+  kubectl fluid diagnose dataset demo-data --archive
+
+  # Export AI-ready diagnostic context
+  kubectl fluid diagnose dataset demo-data --output json`,
 		Version: Version,
 	}
 
-	// Add inspect subcommand
+	// Add subcommands
 	cmd.AddCommand(NewInspectCommand())
+	cmd.AddCommand(NewDiagnoseCommand())
 
 	return cmd
 }

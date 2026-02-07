@@ -3,20 +3,30 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/mrhapile/kubectl-fluid-inspect)](go.mod)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
-A kubectl plugin for inspecting [CNCF Fluid](https://github.com/fluid-cloudnative/fluid) Datasets and Runtimes in a unified view.
+A kubectl plugin for inspecting and diagnosing [CNCF Fluid](https://github.com/fluid-cloudnative/fluid) Datasets and Runtimes in a unified view.
 
 ## Overview
 
-**kubectl-fluid-inspect** provides a streamlined way to inspect Fluid Dataset status and all underlying Kubernetes resources in a single command. Instead of running multiple `kubectl` commands to debug Fluid issues, this plugin aggregates all relevant information and presents it in a human-friendly format.
+**kubectl-fluid-inspect** provides streamlined tools for understanding and debugging Fluid Datasets. Instead of running multiple `kubectl` commands to diagnose issues, this plugin aggregates all relevant information and presents it in human-friendly and machine-readable formats.
 
-### What It Does
+### Commands
 
-- ✅ Fetches Dataset CR status (phase, conditions)
-- ✅ Detects and fetches bound Runtime CR (Alluxio, Jindo, JuiceFS, EFC, Thin, etc.)
-- ✅ Retrieves Master/Worker StatefulSet status
-- ✅ Retrieves Fuse DaemonSet status
-- ✅ Retrieves PersistentVolumeClaim status
-- ✅ Visual indicators for healthy/unhealthy components
+| Command | Purpose |
+|---------|---------|
+| `kubectl fluid inspect` | Quick status overview of Dataset and Runtime |
+| `kubectl fluid diagnose` | Comprehensive debugging with logs, events, and failure analysis |
+
+### Key Features
+
+- ✅ **Read-only, safe operations** - Only `GET` API calls, never modifies resources
+- ✅ **Unified view** - Aggregates Dataset + Runtime + K8s resources
+- ✅ **Multi-runtime support** - Alluxio, Jindo, JuiceFS, EFC, Thin, Vineyard, GooseFS
+- ✅ **Visual indicators** - Color-coded ✓ ⚠️ ❌ for status
+- ✅ **Failure analysis** - Automatic detection of common issues
+- ✅ **AI-ready export** - Structured JSON output for LLM integration
+- ✅ **Shareable archives** - Generate `.tar.gz` bundles for maintainers
+
+---
 
 ## Installation
 
@@ -28,14 +38,11 @@ git clone https://github.com/mrhapile/kubectl-fluid-inspect.git
 cd kubectl-fluid-inspect
 
 # Build the binary
-go build -o bin/kubectl-fluid ./cmd/kubectl-fluid/
+make build
+# or: go build -o bin/kubectl-fluid ./cmd/kubectl-fluid/
 
-# Move to PATH (optional)
+# Install to PATH (optional)
 sudo mv bin/kubectl-fluid /usr/local/bin/
-
-# Or add to kubectl plugins directory
-mkdir -p ~/.kube/plugins/
-cp bin/kubectl-fluid ~/.kube/plugins/
 ```
 
 ### Verify Installation
@@ -44,39 +51,36 @@ cp bin/kubectl-fluid ~/.kube/plugins/
 kubectl fluid --help
 ```
 
-## Usage
+---
 
-### Basic Usage
+## Quick Start
+
+### Inspect Command
+
+Quick status overview:
 
 ```bash
-# Inspect a Dataset in the default namespace
-kubectl fluid inspect dataset <dataset-name>
+# Inspect a Dataset
+kubectl fluid inspect dataset demo-data
 
-# Inspect a Dataset in a specific namespace
-kubectl fluid inspect dataset <dataset-name> -n <namespace>
-
-# Use a custom kubeconfig
-kubectl fluid inspect dataset <dataset-name> --kubeconfig ~/.kube/custom-config
+# With namespace
+kubectl fluid inspect dataset demo-data -n fluid-system
 ```
 
-### Example Output
+**Example Output:**
 
 ```
 ================================================================================
                           FLUID DATASET INSPECTION
 ================================================================================
 
-DATASET: spark-data
-NAMESPACE: fluid-system
+DATASET: demo-data
+NAMESPACE: default
 STATUS: Bound ✓
 UFS TOTAL: 50.2GB
-FILE COUNT: 5,432
-
-MOUNT POINTS:
-  - cos://my-bucket.cos.region.myqcloud.com/spark/
 
 ================================================================================
-RUNTIME: spark-data (AlluxioRuntime)
+RUNTIME: demo-data (AlluxioRuntime)
 ================================================================================
 
 COMPONENT STATUS:
@@ -85,73 +89,189 @@ Master StatefulSet: Ready (1/1)
 Worker StatefulSet: Ready (3/3)
 Fuse DaemonSet:     Ready (3/3)
 
-KUBERNETES RESOURCES:
-----------------------------------------
-Master StatefulSet: Ready (1/1)
-Worker StatefulSet: Ready (3/3)
-Fuse DaemonSet:     Ready (3/3)
-PVC:                Bound (pvc-abc12345)
-
-================================================================================
-CONDITIONS:
-================================================================================
-✓ Ready: True (DatasetReady)
-   The cache system is ready
-✓ RuntimeScheduled: True (RuntimeScheduled)
-   The runtime is scheduled
-
 ================================================================================
 ```
 
-### When Issues Exist
+### Diagnose Command
 
-The output uses visual indicators to highlight problems:
+Comprehensive debugging:
 
-```
-================================================================================
-COMPONENT STATUS:
-----------------------------------------
-Master StatefulSet: Ready (1/1)
-Worker StatefulSet: Not Ready (2/3) ⚠️
-Fuse DaemonSet:     Ready (3/3)
+```bash
+# Full diagnosis with events and logs
+kubectl fluid diagnose dataset demo-data
 
-KUBERNETES RESOURCES:
-----------------------------------------
-Master StatefulSet: Ready (1/1)
-Worker StatefulSet: Not Ready (2/3) ⚠️
-Fuse DaemonSet:     Ready (3/3)
-PVC:                Pending ⚠️
-================================================================================
+# Export AI-ready JSON
+kubectl fluid diagnose dataset demo-data --output json
+
+# Generate shareable archive
+kubectl fluid diagnose dataset demo-data --archive
 ```
 
-## Flags
+**Example Output (Text):**
 
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                      FLUID DATASET DIAGNOSTIC REPORT                        ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+  Dataset: demo-data
+  Namespace: default
+  Collected At: 2026-02-08 00:30:45
+  Health Status: ⚠️  Degraded
+
+=== RESOURCE HIERARCHY ===
+
+  📦 Dataset: demo-data [Bound ✓]
+  │
+  └── ⚙️ Runtime: alluxio
+      ├── 📊 Master: 1/1 ✓
+      ├── 📊 Workers: 3/3 ✓
+      └── 📊 Fuse: 3/4 ✗
+
+=== DETECTED ISSUES ===
+
+  WARNINGS:
+  ⚠️ Fuse not healthy: 3/4 ready [fuse]
+     → Check fuse pod logs and node selectors/tolerations
+
+=== RECENT EVENTS ===
+
+  TYPE         OBJECT               REASON          MESSAGE
+  ----------------------------------------------------------------------------
+  Warning      demo-data-fuse-xyz   BackOff         Back-off restarting failed...
+  Normal       demo-data-master-0   Pulled          Successfully pulled image...
+
+=== LOGS (TAIL) ===
+
+  ┌─ FUSE-0 (FAILING) [demo-data-fuse-xyz/alluxio-fuse] (100 lines)
+  │
+  │ 2026-02-08 00:30:00 ERROR - Failed to connect to master
+  │ 2026-02-08 00:30:01 ERROR - Mount failed: connection refused
+  │
+  └─
+```
+
+---
+
+## Command Reference
+
+### inspect dataset
+
+Quick status overview of a Dataset and bound Runtime.
+
+```bash
+kubectl fluid inspect dataset <name> [flags]
+```
+
+**Flags:**
 | Flag | Short | Description | Default |
 |------|-------|-------------|---------|
 | `--namespace` | `-n` | Target namespace | `default` |
-| `--kubeconfig` | | Path to kubeconfig file | `$KUBECONFIG` or `~/.kube/config` |
-| `--help` | `-h` | Help for the command | |
+| `--kubeconfig` | | Path to kubeconfig | `$KUBECONFIG` |
+
+### diagnose dataset
+
+Comprehensive debugging with CR snapshots, events, resource status, and logs.
+
+```bash
+kubectl fluid diagnose dataset <name> [flags]
+```
+
+**Flags:**
+| Flag | Short | Description | Default |
+|------|-------|-------------|---------|
+| `--namespace` | `-n` | Target namespace | `default` |
+| `--output` | `-o` | Output format: `text`, `json` | `text` |
+| `--archive` | | Generate `.tar.gz` archive | `false` |
+| `--kubeconfig` | | Path to kubeconfig | `$KUBECONFIG` |
+
+---
+
+## AI-Ready Integration
+
+The diagnose command can export structured JSON suitable for LLM analysis:
+
+```bash
+# Export AI-ready context
+kubectl fluid diagnose dataset demo-data --output json > diagnosis.json
+```
+
+### DiagnosticContext Structure
+
+```json
+{
+  "summary": {
+    "datasetName": "demo-data",
+    "namespace": "default",
+    "healthStatus": "Degraded",
+    "masterReady": "1/1",
+    "workersReady": "3/3",
+    "fuseReady": "3/4",
+    "errorCount": 1,
+    "warningCount": 2
+  },
+  "datasetYaml": "...",
+  "events": [...],
+  "logs": {
+    "master": "...",
+    "worker-0": "...",
+    "fuse-0": "..."
+  },
+  "failureHints": [...]
+}
+```
+
+### Why AI is Optional
+
+- **Works offline**: All analysis happens locally without external API calls
+- **Privacy-first**: Secrets are redacted from logs
+- **Pre-computed hints**: Failure patterns detected without LLM
+- **Future-ready**: Structured for easy LLM integration when needed
+
+---
+
+## Archive Format
+
+When using `--archive`, a `.tar.gz` file is created:
+
+```
+fluid-diagnose-demo-data-20260208-003045.tar.gz
+├── dataset.yaml        # Clean Dataset CR
+├── runtime.yaml        # Clean Runtime CR  
+├── events.log          # Formatted events
+├── resources.json      # Resource status
+├── failure_hints.json  # Detected issues
+├── summary.txt         # Human-readable summary
+├── context.json        # AI-ready context
+└── pods/
+    ├── master.log
+    ├── worker-0.log
+    └── fuse-0.log
+```
+
+---
 
 ## Architecture
 
-This plugin is designed as a **read-only, safe** tool that only performs `GET` operations against the Kubernetes API. It never modifies any resources.
+```
+kubectl-fluid
+├── inspect     ─────▶ Quick status check
+│                      (Dataset + Runtime + Resources)
+│
+└── diagnose    ─────▶ Deep analysis
+                       │
+                       ├── CR Snapshots (clean YAML)
+                       ├── Events Collection
+                       ├── Resource Status
+                       ├── Log Collection
+                       └── Failure Analysis
+                                │
+                                ├── Text Output (terminal)
+                                ├── JSON Output (AI-ready)
+                                └── Archive (.tar.gz)
+```
 
-### Key Design Principles
-
-1. **Safety First**: Read-only operations only
-2. **Single Source of Truth**: Aggregates from multiple resources
-3. **Human-Friendly**: Clear output with visual indicators
-4. **Zero Dependencies**: No external tools required beyond kubeconfig
-
-### How It Works
-
-1. Fetches the Dataset CR using the dynamic client
-2. Detects the bound Runtime type (Alluxio, Jindo, JuiceFS, etc.)
-3. Fetches the corresponding Runtime CR
-4. Uses naming conventions to find related StatefulSets (master, worker) and DaemonSet (fuse)
-5. Fetches the PVC using the Dataset name
-6. Aggregates all status information
-7. Formats and outputs the result
+---
 
 ## Supported Runtimes
 
@@ -165,6 +285,8 @@ This plugin is designed as a **read-only, safe** tool that only performs `GET` o
 | Vineyard | `VineyardRuntime` | ✅ Supported |
 | GooseFS | `GooseFSRuntime` | ✅ Supported |
 
+---
+
 ## Development
 
 ### Prerequisites
@@ -176,43 +298,41 @@ This plugin is designed as a **read-only, safe** tool that only performs `GET` o
 
 ```bash
 make build
-# or
-go build -o bin/kubectl-fluid ./cmd/kubectl-fluid/
 ```
 
 ### Running Tests
 
 ```bash
 make test
-# or
-go test ./...
 ```
 
 ### Project Structure
 
 ```
 kubectl-fluid-inspect/
-├── cmd/
-│   └── kubectl-fluid/
-│       └── main.go           # Entry point
+├── cmd/kubectl-fluid/main.go
 ├── pkg/
-│   ├── cmd/                   # CLI commands (Cobra)
-│   │   ├── root.go
-│   │   ├── inspect.go
-│   │   └── inspect_dataset.go
-│   ├── inspect/               # Inspection logic
-│   │   └── inspector.go
-│   ├── k8s/                   # Kubernetes client
-│   │   └── client.go
-│   ├── output/                # Output formatters
-│   │   └── printer.go
-│   └── types/                 # Type definitions
-│       └── types.go
-├── PHASE0_DESIGN.md           # Architecture design document
-├── go.mod
-├── go.sum
-└── README.md
+│   ├── cmd/              # CLI commands (Cobra)
+│   ├── inspect/          # Inspect logic
+│   ├── diagnose/         # Diagnose logic
+│   ├── k8s/              # Kubernetes client
+│   ├── output/           # Output formatters
+│   └── types/            # Type definitions
+├── PHASE0_DESIGN.md      # Architecture design
+├── PHASE2_3_DESIGN.md    # Diagnose & AI design
+├── README.md
+├── Makefile
+└── go.mod
 ```
+
+---
+
+## Design Documents
+
+- [PHASE0_DESIGN.md](PHASE0_DESIGN.md) - Architecture analysis, CRD mappings, failure modes
+- [PHASE2_3_DESIGN.md](PHASE2_3_DESIGN.md) - Diagnose pipeline, AI-ready framework
+
+---
 
 ## Contributing
 
@@ -229,7 +349,6 @@ Apache License 2.0
 ## Related Projects
 
 - [CNCF Fluid](https://github.com/fluid-cloudnative/fluid) - The data acceleration framework this plugin inspects
-- [kubectl](https://kubernetes.io/docs/reference/kubectl/) - The Kubernetes CLI this extends
 
 ## Acknowledgments
 
