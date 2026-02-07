@@ -23,8 +23,10 @@ import (
 	"os"
 
 	"github.com/mrhapile/kubectl-fluid-inspect/pkg/diagnose"
+	"github.com/mrhapile/kubectl-fluid-inspect/pkg/diagnose/mock"
 	"github.com/mrhapile/kubectl-fluid-inspect/pkg/k8s"
 	"github.com/mrhapile/kubectl-fluid-inspect/pkg/output"
+	"github.com/mrhapile/kubectl-fluid-inspect/pkg/types"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +35,7 @@ type diagnoseDatasetOptions struct {
 	kubeconfig string
 	archive    bool
 	outputFmt  string
+	mockMode   bool
 }
 
 // NewDiagnoseDatasetCommand creates the 'diagnose dataset' subcommand
@@ -54,7 +57,14 @@ The diagnostic pipeline collects:
   3. Runtime resource status (StatefulSets, DaemonSet, PVC)
   4. Container logs (master, worker, failing fuse pods)
 
-The output includes automatic failure analysis with hints and suggestions.`,
+The output includes automatic failure analysis with hints and suggestions.
+
+MOCK MODE:
+  Use --mock to run diagnose with simulated Fluid resources.
+  No Kubernetes cluster is required. This is useful for:
+  - Demos and documentation screenshots
+  - Development and testing
+  - Proposal proof-of-work`,
 		Example: `  # Diagnose a dataset in the default namespace
   kubectl fluid diagnose dataset demo-data
 
@@ -65,7 +75,16 @@ The output includes automatic failure analysis with hints and suggestions.`,
   kubectl fluid diagnose dataset demo-data --archive
 
   # Diagnose in a specific namespace
-  kubectl fluid diagnose dataset demo-data -n fluid-system`,
+  kubectl fluid diagnose dataset demo-data -n fluid-system
+
+  # Run with mock data (no cluster required)
+  kubectl fluid diagnose dataset demo-data --mock
+
+  # Generate mock archive for demos
+  kubectl fluid diagnose dataset demo-data --mock --archive
+
+  # Export mock JSON for AI testing
+  kubectl fluid diagnose dataset demo-data --mock -o json`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDiagnoseDataset(args[0], opts)
@@ -77,22 +96,32 @@ The output includes automatic failure analysis with hints and suggestions.`,
 	cmd.Flags().StringVar(&opts.kubeconfig, "kubeconfig", "", "Path to the kubeconfig file")
 	cmd.Flags().BoolVar(&opts.archive, "archive", false, "Generate a diagnostic archive (.tar.gz)")
 	cmd.Flags().StringVarP(&opts.outputFmt, "output", "o", "text", "Output format: text, json")
+	cmd.Flags().BoolVar(&opts.mockMode, "mock", false, "Use mock data (no Kubernetes cluster required, for demos/development)")
 
 	return cmd
 }
 
 func runDiagnoseDataset(name string, opts *diagnoseDatasetOptions) error {
-	// Create Kubernetes client
-	client, err := k8s.NewClient(opts.kubeconfig)
-	if err != nil {
-		return fmt.Errorf("failed to create Kubernetes client: %w", err)
-	}
+	var result *types.DiagnosticResult
+	var ctx *types.DiagnosticContext
 
-	// Create diagnoser and run diagnosis
-	diagnoser := diagnose.NewDatasetDiagnoser(client)
-	result, err := diagnoser.Diagnose(context.Background(), opts.namespace, name)
-	if err != nil {
-		return fmt.Errorf("failed to diagnose dataset: %w", err)
+	if opts.mockMode {
+		// Mock mode: use simulated data, no K8s client needed
+		result = mock.MockDiagnosticResult(name, opts.namespace)
+		ctx = mock.MockDiagnosticContext(name, opts.namespace)
+	} else {
+		// Real mode: connect to Kubernetes
+		client, err := k8s.NewClient(opts.kubeconfig)
+		if err != nil {
+			return fmt.Errorf("failed to create Kubernetes client: %w", err)
+		}
+
+		diagnoser := diagnose.NewDatasetDiagnoser(client)
+		result, err = diagnoser.Diagnose(context.Background(), opts.namespace, name)
+		if err != nil {
+			return fmt.Errorf("failed to diagnose dataset: %w", err)
+		}
+		ctx = diagnoser.ToContext(result)
 	}
 
 	// Handle output based on flags
@@ -103,14 +132,17 @@ func runDiagnoseDataset(name string, opts *diagnoseDatasetOptions) error {
 		if err != nil {
 			return fmt.Errorf("failed to create archive: %w", err)
 		}
-		fmt.Printf("✅ Diagnostic archive created: %s\n", archivePath)
+		if opts.mockMode {
+			fmt.Printf("✅ Mock diagnostic archive created: %s\n", archivePath)
+		} else {
+			fmt.Printf("✅ Diagnostic archive created: %s\n", archivePath)
+		}
 		return nil
 	}
 
 	switch opts.outputFmt {
 	case "json":
-		// Generate AI-ready context and output as JSON
-		ctx := diagnoser.ToContext(result)
+		// Output AI-ready context as JSON
 		encoder := json.NewEncoder(os.Stdout)
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(ctx)

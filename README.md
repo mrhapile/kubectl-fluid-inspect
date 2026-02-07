@@ -25,6 +25,7 @@ A kubectl plugin for inspecting and diagnosing [CNCF Fluid](https://github.com/f
 - ✅ **Failure analysis** - Automatic detection of common issues
 - ✅ **AI-ready export** - Structured JSON output for LLM integration
 - ✅ **Shareable archives** - Generate `.tar.gz` bundles for maintainers
+- ✅ **Mock mode** - Demo without a cluster using `--mock`
 
 ---
 
@@ -183,6 +184,7 @@ kubectl fluid diagnose dataset <name> [flags]
 | `--namespace` | `-n` | Target namespace | `default` |
 | `--output` | `-o` | Output format: `text`, `json` | `text` |
 | `--archive` | | Generate `.tar.gz` archive | `false` |
+| `--mock` | | Use mock data (no cluster required) | `false` |
 | `--kubeconfig` | | Path to kubeconfig | `$KUBECONFIG` |
 
 ---
@@ -248,6 +250,72 @@ fluid-diagnose-demo-data-20260208-003045.tar.gz
     ├── worker-0.log
     └── fuse-0.log
 ```
+
+---
+
+## 🧪 Mock Diagnose Mode (No Cluster Required)
+
+The `--mock` flag enables running the full diagnostic pipeline without a Kubernetes cluster. This is ideal for:
+
+- **Demos and screenshots** - Show realistic output without infrastructure
+- **Documentation** - Generate example output for docs and proposals
+- **Development** - Test output formatting without cluster access
+- **CI/CD** - Validate CLI behavior in environments without K8s
+
+### Why Mock Mode Exists
+
+Real Fluid deployments require:
+- A running Kubernetes cluster
+- Fluid operator installed
+- Dataset and Runtime CRs deployed
+
+Mock mode removes these dependencies while producing **identical output structure** to real diagnoses.
+
+### What Mock Mode Provides
+
+The mock data simulates a realistic **degraded Fluid deployment** with:
+
+| Component | Status | Issue |
+|-----------|--------|-------|
+| Dataset | Bound | ✓ Healthy |
+| Master | 1/1 Ready | ✓ Healthy |
+| Workers | 1/2 Ready | ⚠️ Insufficient memory |
+| Fuse | 2/3 Ready | ❌ Node taint not tolerated |
+| PVC | Bound | ✓ Healthy |
+
+This includes realistic:
+- Kubernetes events (FailedScheduling, Unhealthy, FailedMount, Evicted)
+- Container logs with error patterns
+- Failure hints with actionable suggestions
+
+### Usage Examples
+
+```bash
+# Basic mock diagnosis
+./bin/kubectl-fluid diagnose dataset demo-data --mock
+
+# Mock with JSON output (AI-ready)
+./bin/kubectl-fluid diagnose dataset demo-data --mock -o json
+
+# Generate mock archive for sharing
+./bin/kubectl-fluid diagnose dataset demo-data --mock --archive
+
+# Specify custom namespace (reflected in output)
+./bin/kubectl-fluid diagnose dataset my-dataset --mock -n production
+```
+
+### Pipeline Equivalence
+
+| Real Mode | Mock Mode |
+|-----------|-----------|
+| Connects to K8s API | No network calls |
+| Fetches real CRs | Returns mock CRs |
+| Reads pod logs | Returns mock logs |
+| Queries events | Returns mock events |
+| Same printers | Same printers |
+| Same archivers | Same archivers |
+
+Both modes use **100% identical output logic**.
 
 ---
 
